@@ -1,0 +1,147 @@
+/*
+CREATE DATABASE PortfolioProject
+
+
+DROP TABLE if exists CovidDeaths
+CREATE TABLE CovidDeaths(
+    iso_code    varchar(50),
+    continent	varchar(50),
+    location	varchar(50),
+    date	DATE,
+    population  float,
+    total_cases float,
+    new_cases	float,
+    new_cases_smoothed	float,
+    total_deaths    float,
+    new_deaths  float,
+    new_deaths_smoothed float,
+    total_cases_per_million	float,
+    new_cases_per_million	float,
+    new_cases_smoothed_per_million	float,
+    total_deaths_per_million	float,
+    new_deaths_per_million	float,
+    new_deaths_smoothed_per_million	float,
+    reproduction_rate	float,
+    icu_patients	float,
+    icu_patients_per_million	float,
+    hosp_patients	float,
+    hosp_patients_per_million	float,
+    weekly_icu_admissions	float,
+    weekly_icu_admissions_per_million	float,
+    weekly_hosp_admissions	float,
+    weekly_hosp_admissions_per_million  float
+)
+
+BULK INSERT CovidDeaths from '/CovidDeaths.csv' with (fieldterminator = ',', rowterminator = '0x0a');
+
+
+
+DROP TABLE if exists CovidVaccinations
+
+CREATE TABLE CovidVaccinations(
+    iso_code    varchar(50),
+    continent	varchar(50),
+    location	varchar(50),
+    date	varchar(50),
+    new_tests   int,	
+    total_tests	int,
+    total_tests_per_thousand	float,
+    new_tests_per_thousand	float,
+    new_tests_smoothed	int,
+    new_tests_smoothed_per_thousand	float,
+    positive_rate	float,
+    tests_per_case	float,
+    tests_units	varchar(50),
+    total_vaccinations	int,
+    people_vaccinated	int,
+    people_fully_vaccinated	int,
+    new_vaccinations	int,
+    new_vaccinations_smoothed	int,
+    total_vaccinations_per_hundred	float,
+    people_vaccinated_per_hundred	float,
+    people_fully_vaccinated_per_hundred	float,
+    new_vaccinations_smoothed_per_million	int,
+    stringency_index	float,
+    population_density	float,
+    median_age	float,
+    aged_65_older	float,
+    aged_70_older	float,
+    gdp_per_capita	float,
+    extreme_poverty	float,
+    cardiovasc_death_rate	float,
+    diabetes_prevalence	float,
+    female_smokers	float,
+    male_smokers	float,
+    handwashing_facilities	float,
+    hospital_beds_per_thousand	float,
+    life_expectancy	float,
+    human_development_index float
+)
+
+BULK INSERT CovidVaccinations from '/CovidVaccinations.csv' with (fieldterminator = ',', rowterminator = '0x0a');
+*/
+
+SELECT location, date, total_cases, new_cases, total_deaths, population, 
+    (total_deaths/total_cases)*100 AS DeathPercentage,
+    (total_cases/population)*100 AS InfectionRate
+From PortfolioProject..CovidDeaths
+WHERE location LIKE '%states%'
+order by 1,2
+
+SELECT location, population, MAX(total_cases) AS HighestInfectionCount, 
+    MAX((total_cases/population)*100) AS InfectionRate
+From PortfolioProject..CovidDeaths
+--WHERE location LIKE '%states%'
+WHERE continent IS NOT NULL
+GROUP BY location, population
+ORDER BY InfectionRate DESC
+
+SELECT location, MAX(total_deaths) AS HighestDeathCount
+From PortfolioProject..CovidDeaths
+--WHERE location LIKE '%states%'
+WHERE continent IS NOT NULL
+GROUP BY location
+ORDER BY HighestDeathCount DESC
+
+SELECT location, MAX(total_deaths) AS HighestDeathCount
+From PortfolioProject..CovidDeaths
+--WHERE location LIKE '%states%'
+WHERE continent IS NULL
+GROUP BY location
+ORDER BY HighestDeathCount DESC
+
+Select date, SUM(new_cases) as total_cases, SUM(cast(new_deaths as int)) as total_deaths, SUM(cast(new_deaths as int))/SUM(New_Cases)*100 as DeathPercentage
+From PortfolioProject..CovidDeaths
+--Where location like '%states%'
+where continent is not null 
+Group By date
+order by 1,2
+
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations,
+    SUM(vac.new_vaccinations) OVER (PARTITION BY dea.location ORDER BY dea.location, dea.date) AS RollingPeopleVaccinated
+FROM PortfolioProject..CovidDeaths dea
+JOIN PortfolioProject..CovidVaccinations vac
+    ON dea.location = vac.location AND dea.date = vac.date
+where dea.continent is not null 
+ORDER BY 1,2,3
+
+WITH PopvsVac (continent, location, date, population, new_vaccinations, RollingPeopleVaccinated)
+AS 
+(SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations,
+    SUM(vac.new_vaccinations) OVER (PARTITION BY dea.location ORDER BY dea.location, dea.date) AS RollingPeopleVaccinated
+FROM PortfolioProject..CovidDeaths dea
+JOIN PortfolioProject..CovidVaccinations vac
+    ON dea.location = vac.location AND dea.date = vac.date
+where dea.continent is not null )
+
+SELECT *, (RollingPeopleVaccinated/population)*100 AS PercentPopulationVaccinated
+FROM PopvsVac
+
+CREATE VIEW PercentPopulationVaccinated AS
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations,
+    SUM(vac.new_vaccinations) OVER (PARTITION BY dea.location ORDER BY dea.location, dea.date) AS RollingPeopleVaccinated
+FROM PortfolioProject..CovidDeaths dea
+JOIN PortfolioProject..CovidVaccinations vac
+    ON dea.location = vac.location AND dea.date = vac.date
+where dea.continent is not null 
+
